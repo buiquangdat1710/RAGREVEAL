@@ -5,7 +5,6 @@ import numpy as np
 from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score
 import os
 from dotenv import load_dotenv, find_dotenv
-
 load_dotenv(find_dotenv(), override=True)
 file_path = "chrome_debian.json"
 data = pd.read_json(file_path)
@@ -22,14 +21,13 @@ data['code'] = (data['code'].apply(data_cleaning, args=(comment_regex, ''))
                                       .apply(data_cleaning, args=(newline_regex, ' '))
                                       .apply(data_cleaning, args=(whitespace_regex, ' '))
                          )
-length_check = np.array([len(x) for x in data['code']]) > 10000
+length_check = np.array([len(x) for x in data['code']]) > 12000
 data = data[~length_check]
 
 
 # Divide 80% of data for training and 20% for testing
 train_data = data.sample(frac=0.8, random_state=42)
 test_data = data.drop(train_data.index)
-test_data = test_data.head(100)
 print(len(train_data))
 print(len(test_data))
 
@@ -90,7 +88,7 @@ from langchain.prompts import ChatPromptTemplate, HumanMessagePromptTemplate, Me
 from langchain.memory import ConversationBufferMemory
 
 
-llm = ChatOpenAI(model_name = 'gpt-3.5-turbo', temperature=0.01)
+llm = ChatOpenAI(model_name = 'gpt-4o-mini', temperature=0)
 
 memory = ConversationBufferMemory(
     memory_key = 'chat_history',
@@ -126,38 +124,34 @@ queries = [
 
 
 answers = []
-
+idx = 0
 for query in queries:
     retrieved_docs = retriever.get_relevant_documents(query)
     ans = "### Instruction ###\nWe curate a more robust and comprehensive real world dataset, REVEAL, by tracking the past vulnerabilities from two open-source projects: Linux Debian Kernel and Chromium (open source project of Chrome). We select these projects because: (i) these are two popular and well-maintained public projects with large evolutionary history, (ii) the two projects represent two important program domains (OS and browsers) that exhibit diverse security issues, and (iii) both the projects have plenty of publicly available vulnerability reports\n### Example ###\n"
     for i, doc in enumerate(retrieved_docs[:K], 1):
-        # print(f"\nDocument {i}:")
-        # print(f"Code Snippet: {doc.page_content[:500]}...")  # Print first 500 characters to keep it concise
-        # print(f"Label: {doc.metadata['label']}")
         label = int(doc.metadata['label'])
-        prompt = "Question: See the following code:\n" +  doc.page_content + "\nThink step by step and explain each line of code in detail. "
+        prompt = "Question: See the following code:\n" +  doc.page_content + "\nThink step by step and tell what the code does in a short paragraph. "
         if label == 1:
-            prompt += "This code is vulnerable. Conclude that the above code contains a vulnerability and explain why."
+            prompt += "This code is vulnerable. Conclude that the above code contains a vulnerability and explain why in a short way."
         else:
-            prompt += "This code is not vulnerable. Conclude that the above code does not contain vulnerabilities and explain why."
+            prompt += "This code is not vulnerable. Conclude that the above code does not contain vulnerabilities and explain why in a short way."
         tmp = chain.invoke({'content': prompt})["text"]
         prompt += "\nAnswer:\n" + tmp + "\n"
         ans += prompt
+    idx += 1
+    print(idx)
     answers.append(ans)
 
 
 idx = 0
 final_answers = []
 for ans in answers:
-    ans = ans + "Question: See the following code:\n" + test_data['code'].iloc[idx]  + "\nThink step by step and explain each line of code in detail.\nAnswer: "
+    ans = ans + "Question: See the following code:\n" + test_data['code'].iloc[idx]  + "\nThink step by step and tell what the code does in a short paragraph.\nAnswer: "
     idx += 1
     tmp = chain.invoke({'content': ans})["text"]
-
     final_answers.append(tmp)
+    print(idx)
 
-for ans in final_answers:
-    print(ans)
-    print("-"*50)
 
 predic_label = []
 for ans in final_answers:
